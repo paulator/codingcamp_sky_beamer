@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Capture</title>
+</head>
+<body>
+    <button onclick="startCapture()">Verbinden</button>
+    <video id="video" width="800" height="680" autoplay></video>
+    
+    <!--<a href="https://bibekkakati.github.io/blogs-projects/web/screen-capture-share/" target="_blank">View More Projects</a> -->
+
+
+    <script>
+        const displayMediaOptions = {
+            video: true,
+            audio: {
+                suppressLocalAudioPlayback: false,
+            },
+        };
+
+        const socket = new WebSocket('wss://10.10.10.236/backend/'); // Replace with your server details
+
+        socket.onopen = () => {
+            console.log('WebSocket connection established.');
+        };
+
+        async function startCapture() {
+            const video = document.getElementById("video");
+
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+                video.srcObject = stream;
+
+                // Send the stream data to the WebSocket server
+                const mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        socket.send(event.data);
+                    }
+                };
+                mediaRecorder.start(1000); // Send data every second
+            } catch (err) {
+                console.error(`Error: ${err}`);
+            }
+        }
+    </script>
+</body>
+</html>

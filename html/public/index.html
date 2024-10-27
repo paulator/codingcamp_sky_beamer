@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beamerserver</title>
+  <script src="/socket.io.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #d7e7e4, #ACB6E5);
+      font-family: 'Arial', sans-serif;
+    }
+
+    .center-box {
+      background-color: rgb(255, 253, 253);
+      border-radius: 30px;
+      box-shadow: 0 90px 50px rgba(0, 0, 0, 0.2);
+      padding: 113px;
+      text-align: center;
+      width: 714px;
+
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: url(./Tokio.gif) repeat center center fixed;
+      background-size: cover;
+      /* Das GIF füllt den gesamten Hintergrund */
+      font-family: 'Arial', sans-serif;
+    }
+
+    h1 {
+      font-size: 40px;
+      color: #333;
+      margin-bottom: 98px;
+    }
+
+    .button-container {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      font-size: 33px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .connect-btn {
+      background-color: #28a745;
+      color: white;
+    }
+
+    .connect-btn:hover {
+      background-color: #218838;
+    }
+
+    .disconnect-btn {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    .disconnect-btn:hover {
+      background-color: #c82333;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="center-box">
+    <h1>Klick, um loszulegen</h1>
+    <div class="button-container">
+      <button id="verbinden" class="connect-btn">Verbinden</button>
+      <button id="beenden" class="disconnect-btn">Beenden</button>
+    </div>
+    <div style="padding-top:60px">
+      <img width="200px " src="./Neues-Schullogo.png" alt="">
+    </div>
+    <video style="display: none;" id="video" width="800" height="100" autoplay></video>
+    <video style="display: none;" id="remoteVideo" width="800" height="100" autoplay></video>
+</body>
+
+</html>
+
+<script>
+  const socket = io();
+  /*const socket = new WebSocket("wss://10.10.10.236/backend/");*/
+
+  const roomId = 'raum1'; // This should be dynamically generated or input by the user
+
+  const video = document.getElementById("video");
+  const remoteVideo = document.getElementById("remoteVideo");
+
+  var verbinden = document.getElementById("verbinden")
+  verbinden.addEventListener('click', startSharing)
+
+  var beenden = document.getElementById("beenden")
+  beenden.addEventListener('click', stopSharing)
+
+  let peerConnection;
+
+  var displayMediaOptions = {
+    video: {
+      cursor: "always",
+    },
+    audio: false,
+  };
+
+  async function startSharing() {
+
+
+    // Emit an event to join a room
+    socket.emit('join room', roomId);
+    try {
+      video.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+    } catch (error) {
+      console.log(error);
+    }
+    createPeerConnection();
+    createOffer();
+
+  }
+
+  function stopSharing() {
+    let tracks = video.srcObject.getTracks();
+    tracks.forEach((track) => track.stop());
+    video.srcObject = null;
+  }
+
+  async function createOffer() {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    // Emit the offer to the server
+    socket.emit('offer', offer, roomId);
+  }
+
+  function createPeerConnection() {
+    const config = {
+      iceServers: [
+        {
+          urls: 'stun:stun.l.google.com:19302' // Google's public STUN server
+        }
+      ]
+    };
+
+    peerConnection = new RTCPeerConnection(config);
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('ice candidate', event.candidate, roomId);
+      }
+    };
+
+    // Handle remote video stream
+    peerConnection.ontrack = (event) => {
+      remoteVideo.srcObject = event.streams[0];
+    };
+
+    // Add local stream to peer connection
+    const localStream = video.srcObject;
+    for (const track of localStream.getTracks()) {
+      peerConnection.addTrack(track, localStream);
+    }
+  }
+
+  socket.on('offer', async (offer) => {
+    console.log("on offer ist da")
+    if (!peerConnection) {
+      createPeerConnection();
+    }
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    socket.emit('answer', answer, roomId);
+  });
+
+  socket.on('answer', async (answer) => {
+    console.log("on answer")
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  });
+
+  socket.on('ice candidate', async (candidate) => {
+    console.log("on ice")
+    try {
+      await peerConnection.addIceCandidate(candidate);
+    } catch (error) {
+      console.error('Error adding received ice candidate', error);
+    }
+  });
+
+</script>
